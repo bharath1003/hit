@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jump & Hit Platformer</title>
+  <style>
+    body { background: #202038; margin: 0; }
+    #info {
+      color: #fff; text-align: center; font-family: sans-serif;
+      font-size: 20px; margin-top: 25px; letter-spacing: 1px;
+    }
+    canvas {
+      display: block; margin: 32px auto 0 auto;
+      border: 4px solid #40bfff; background: #23263f;
+      border-radius: 12px;
+      box-shadow: 0 10px 24px #147ea980;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <span style="color:#40bfff">Arrows/WASD</span>: Move/Jump &nbsp;|&nbsp;
+    <span style="color:#ffdb6c">'H'</span>: Hit &nbsp;|&nbsp;
+    <span style="color:#847">Goal: Score points by defeating enemies!</span>
+  </div>
+  <canvas id="game" width="900" height="480"></canvas>
+  <script>
+    // ----- Constants -----
+    const GROUND_Y = 400, GRAVITY = 1.12, JUMP_VELOCITY = -17, RUN_SPEED = 7;
+    const PLAYER_W = 44, PLAYER_H = 44, ENEMY_W = 44, ENEMY_H = 44;
+    let score = 0, colorFlash = 0;
+
+    // ----- Game Objects -----
+    const player = {
+      x: 90, y: GROUND_Y-PLAYER_H, w: PLAYER_W, h: PLAYER_H,
+      vy: 0, onGround: true, swinging: false, dir: 1, lastHit: 0
+    };
+    let enemy = spawnEnemy();
+
+    function spawnEnemy() {
+      // Random X between 380 and 820, always on ground
+      const x = Math.random() * 420 + 380;
+      return { x, y: GROUND_Y-ENEMY_H, w: ENEMY_W, h: ENEMY_H, alive: true, hitFlash: 0 };
+    }
+
+    // ----- Input Handling -----
+    const keys = {};
+    document.addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
+      keys[k] = true;
+      if ((k === " " || k === "w" || k === "arrowup") && player.onGround) {
+        player.vy = JUMP_VELOCITY; player.onGround = false;
+      }
+      if (k === "h" && !player.swinging) {
+        player.swinging = true; player.lastHit = Date.now();
+        setTimeout(() => player.swinging = false, 200);
+        // Hit check
+        if (
+          enemy.alive &&
+          Math.abs((player.x+player.w/2)-(enemy.x+enemy.w/2)) < 60 &&
+          Math.abs(player.y-enemy.y) < 26
+        ) {
+          enemy.alive = false; score++; enemy.hitFlash = 16;
+          colorFlash = 10;
+        }
+      }
+    });
+    document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    // ----- Main Loop -----
+    const canvas = document.getElementById("game"), ctx = canvas.getContext("2d");
+    function gameLoop() {
+      // --- Physics ---
+      if (!player.onGround) {
+        player.vy += GRAVITY;
+        player.y += player.vy;
+        if (player.y >= GROUND_Y-player.h) {
+          player.y = GROUND_Y-player.h; player.vy = 0; player.onGround = true;
+        }
+      }
+      // --- Input/Move ---
+      if (keys["arrowleft"] || keys["a"]) { player.x -= RUN_SPEED; player.dir = -1; }
+      if (keys["arrowright"] || keys["d"]) { player.x += RUN_SPEED; player.dir = 1; }
+      // Bounds
+      if (player.x<0) player.x=0;
+      if (player.x>canvas.width-player.w) player.x = canvas.width-player.w;
+
+      // Respawn enemy if defeated
+      if (!enemy.alive && enemy.hitFlash--<=0) enemy = spawnEnemy();
+
+      // ---- Drawing ----
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // Cool animated background
+      let bggrad = ctx.createLinearGradient(0,0,0,canvas.height);
+      bggrad.addColorStop(0,'#24245c'); bggrad.addColorStop(1,'#10101e');
+      ctx.fillStyle = bggrad; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      // Draw ground
+      ctx.fillStyle = "#353551";
+      ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height-GROUND_Y);
+
+      // Draw score, effect
+      if (colorFlash>0) colorFlash--;
+      ctx.font = "bold 26px sans-serif";
+      ctx.fillStyle = colorFlash>0 ? "#ffe400" : "#bde6eb";
+      ctx.fillText("Score: " + score, 25, 45);
+
+      // Draw enemy
+      if(enemy.alive || enemy.hitFlash>0){
+        ctx.save();
+        ctx.translate(enemy.x+enemy.w/2, enemy.y+enemy.h/2);
+        if (enemy.hitFlash>0) ctx.rotate((enemy.hitFlash%2?-1:1)*0.1);
+        ctx.shadowColor="#ff3696";ctx.shadowBlur=enemy.hitFlash?20:0;
+        ctx.fillStyle=enemy.hitFlash>0?"#fff244":"#ff3968";
+        ctx.fillRect(-enemy.w/2,-enemy.h/2,enemy.w,enemy.h);
+        ctx.restore();
+      }
+
+      // Draw player
+      ctx.save();
+      ctx.translate(player.x+player.w/2, player.y+player.h/2);
+      if (player.swinging) ctx.scale(1.18,1.18);
+      ctx.fillStyle = player.swinging ? "#ffde24" : "#39e670";
+      ctx.shadowColor="#0ff"; ctx.shadowBlur=player.onGround?0:14;
+      ctx.fillRect(-player.w/2,-player.h/2,player.w,player.h);
+
+      // Arm for hit
+      if (player.swinging) {
+        ctx.fillStyle="#fff";
+        ctx.fillRect(player.dir*player.w/2-2, -8, 28*player.dir, 17);
+      }
+      ctx.restore();
+
+      // Draw instructions overlay for first score
+      if (score===0) {
+        ctx.font = "20px sans-serif";
+        ctx.fillStyle = "#dbf7f3";
+        ctx.globalAlpha = 0.73;
+        ctx.fillRect(232,110,436,114); ctx.globalAlpha = 1;
+        ctx.fillStyle = "#333";
+        ctx.fillText("Move near the enemy and press 'H' to defeat it!",245,182);
+        ctx.font = "17px sans-serif";
+        ctx.fillStyle = "#669";
+        ctx.fillText("Each defeat = +1 point. How high can you score?",260,208);
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+  </script>
+</body>
+</html>
